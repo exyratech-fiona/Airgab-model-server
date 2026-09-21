@@ -1,0 +1,96 @@
+# GPU-enabled llama.cpp model server for air-gapped client deployments.
+#
+# This is the CUDA variant of the CPU-only Dockerfile. Same multi-stage layout,
+# same entrypoint, same air-gap contract — but linked against NVIDIA CUDA libs
+# so llama-server can offload layers to GPU via --n-gpu-layers.
+#
+# Build:
+#   CUDA=1 bash build-and-push.sh
+# or directly:
+#   docker build -f Dockerfile.cuda -t dlabssg/local-llm:cuda12 .
+#
+# Prerequisites on the CLIENT's box:
+#   1. NVIDIA GPU drivers installed
+#   2. NVIDIA Container Toolkit installed (nvidia-ctk)
+#   3. docker compose with GPU support (compose v2)
+#
+# The image is ~5 GB (vs ~200 MB for CPU) because it bundles the CUDA runtime
+# libraries. The .gguf model files are still bind-mounted, never baked in.
+
+# ---------- build stage ----------
+FROM nvidia/cuda:12.6.3-devel-ubuntu24.04 AS build
+
+ARG LLAMA_CPP_REF=master
+
+# ISA flags — same safe defaults as the CPU Dockerfile.
+ARG GGML_NATIVE=OFF
+ARG GGML_AVX=ON
+ARG GGML_AVX2=ON
+ARG GGML_FMA=ON
+ARG GGML_F16C=ON
+ARG GGML_AVX512=OFF
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        git \
+        ccache \
+        libcurl4-openssl-dev \
+        libgomp1 \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone --depth 1 --branch "${LLAMA_CPP_REF}" https://github.com/ggml-org/llama.cpp.git . \
+    && git rev-parse HEAD > /llama.cpp.commit
+
+# Key difference from CPU build: -DGGML_CUDA=ON
+RUN cmake -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DGGML_NATIVE=${GGML_NATIVE} \
+        -DGGML_AVX=${GGML_AVX} \
+        -DGGML_AVX2=${GGML_AVX2} \
+        -DGGML_FMA=${GGML_FMA} \
+        -DGGML_F16C=${GGML_F16C} \
+        -DGGML_AVX512=${GGML_AVX512} \
+        -DGGML_CUDA=ON \
+        -DLLAMA_CURL=ON \
+        -DLLAMA_BUILD_TESTS=OFF \
+        -DLLAMA_BUILD_EXAMPLES=ON \
+        -DLLAMA_BUILD_SERVER=ON \
+    && cmake --build build --config Release --target llama-server llama-bench -j "$(nproc)"
+
+RUN mkdir -p /opt/llama/bin /opt/llama/lib \
+    && cp build/bin/llama-server /opt/llama/bin/ \
+    && cp build/bin/llama-bench /opt/llama/bin/ \
+    && find build -name "*.so" -exec cp {} /opt/llama/lib/ \; \
+    && cp /llama.cpp.commit /opt/llama/
+
+# ---------- runtime stage ----------
+FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04 AS runtime
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        libcurl4 \
+        libgomp1 \
+        ca-certificates \
+        curl \
+        numactl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -u 10001 -m -d /home/llama llama
+
+COPY --from=build /opt/llama/bin/ /usr/local/bin/
+COPY --from=build /opt/llama/lib/ /usr/local/lib/
+COPY --from=build /opt/llama/llama.cpp.commit /etc/llama.cpp.commit
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh && ldconfig
+
+USER llama
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=5 \
+    CMD curl -fsS http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["entrypoint.sh"]
+

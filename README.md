@@ -26,15 +26,15 @@ Two ways to get the artifact onto the client's box, depending on how air-gapped
 "air-gapped" actually is:
 
 1. **Restricted but not fully isolated** (an allowlisted registry mirror, a
-  proxy that reaches Docker Hub): `docker pull dlabssg/local-llm:latest`
+   proxy that reaches Docker Hub): `docker pull dlabssg/local-llm:latest`
    directly on the target box, then never touch the network again.
 2. **Truly air-gapped, zero exceptions**: build or pull the image on a
    connected machine, then
    ```bash
-  docker save dlabssg/local-llm:latest -o local-llm.tar
-  # move local-llm.tar across the air gap by whatever means the client's
+   docker save dlabssg/local-llm:latest -o local-llm.tar
+   # move local-llm.tar across the air gap by whatever means the client's
    # security policy allows (USB, one-way transfer station, etc.)
-  docker load -i local-llm.tar
+   docker load -i local-llm.tar
    ```
    `docker compose up` then finds the image already present locally and never
    attempts to reach Docker Hub, because the tag it's looking for already
@@ -47,12 +47,14 @@ in `.env` (see below). They never get baked into the image.
 ## Quick start
 
 ```bash
-cp .env.example .env
-# edit .env: at minimum set LLM_MODEL_FILE, EMBED_MODEL_FILE, RERANK_MODEL_FILE
-# to the .gguf filenames you've placed under ./models/
+# Step 1: detect your hardware and generate optimal .env
+bash scripts/detect-hardware.sh
+# review .env.generated, fill in model filenames, then:
+cp .env.generated .env
 
+# Step 2: deploy
 docker compose pull        # or: docker load -i local-llm.tar   (see above)
-docker compose up -d
+docker compose up -d       # or: docker compose --profile gpu up -d  (for GPU)
 bash scripts/verify.sh     # health + one real call per service
 ```
 
@@ -86,9 +88,9 @@ things you cannot skip:
 ### Tuning for the client's CPU
 
 The shipped image is built with `GGML_AVX2=ON, GGML_AVX512=OFF` — safe,
-portable settings that run on essentially any x86_64 server. If you know the
-client's actual CPU supports more (AVX-512, for instance), rebuilding with
-matching flags gets real throughput back:
+portable settings that run on essentially any x86_64 server from the last
+~10 years. If you know the client's actual CPU supports more (AVX-512, for
+instance), rebuilding with matching flags gets real throughput back:
 
 ```bash
 BUILD_ARGS="--build-arg GGML_AVX512=ON" bash build-and-push.sh
@@ -97,6 +99,122 @@ BUILD_ARGS="--build-arg GGML_AVX512=ON" bash build-and-push.sh
 Do this on hardware that MATCHES what you're deploying to, or on a machine you
 know is a strict superset — a binary built with instructions the runtime CPU
 lacks crashes with `Illegal instruction`, not a graceful fallback.
+
+## NUMA — multi-socket CPU optimization
+
+For dual-socket servers (dual Xeon, EPYC, etc.), NUMA-aware configuration
+gives a **~50% speedup** in decode throughput (benchmarked: 2.9 → 4.2 tok/s
+on a 40-core dual-socket Xeon). The entrypoint wrapper runs `numactl
+--interleave=all` when enabled, spreading model memory across both memory
+controllers.
+
+### How to enable
+
+Set these in `.env`:
+
+```env
+NUMA_ENABLED=1
+
+# Pin the LLM to one NUMA node's cores (use `lscpu` to find yours)
+LLM_CPUSET=0-19          # first 20 cores (NUMA node 0)
+LLM_THREADS=20            # match the cpuset
+
+# Embed/rerank are lighter — no pinning needed
+EMBED_THREADS=8
+RERANK_THREADS=8
+```
+
+Then `docker compose up -d` as usual.
+
+### Finding your NUMA layout
+
+```bash
+lscpu | grep -i numa
+# NUMA node0 CPU(s):   0-19
+# NUMA node1 CPU(s):   20-39
+
+# Verify with:
+numactl --hardware
+```
+
+### Disabling kernel NUMA balancing (recommended)
+
+Kernel auto-balancing fights with explicit NUMA pinning. Disable it:
+
+```bash
+echo 'kernel.numa_balancing=0' | sudo tee /etc/sysctl.d/99-numa.conf
+sudo sysctl -p /etc/sysctl.d/99-numa.conf
+```
+
+## GPU — NVIDIA GPU offloading
+
+For clients with NVIDIA GPUs, model layers can be offloaded to GPU VRAM for
+dramatically faster inference (10-100x faster than CPU for large models).
+
+### Prerequisites on the host
+
+1. **NVIDIA GPU drivers** — `nvidia-smi` should show your GPU(s)
+2. **NVIDIA Container Toolkit** — install with:
+   ```bash
+   # Add NVIDIA package repo
+   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+     | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+     | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+     | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+   sudo nvidia-ctk runtime configure --runtime=docker
+   sudo systemctl restart docker
+   ```
+3. **CUDA image built** — `CUDA=1 bash build-and-push.sh`
+
+### Building the GPU image
+
+```bash
+# Build locally
+CUDA=1 bash build-and-push.sh
+
+# Or for air-gapped transfer:
+CUDA=1 bash build-and-push.sh
+docker save dlabssg/local-llm:cuda12 -o local-llm-cuda12.tar
+# Transfer and load on the target box:
+docker load -i local-llm-cuda12.tar
+```
+
+### Running with GPU
+
+Set in `.env`:
+
+```env
+LOCAL_LLM_IMAGE=dlabssg/local-llm:cuda12
+
+# 99 = offload all layers to GPU. If the model doesn't fit entirely in VRAM,
+# llama.cpp automatically keeps remaining layers on CPU (no crash).
+LLM_GPU_LAYERS=99
+EMBED_GPU_LAYERS=99
+RERANK_GPU_LAYERS=99
+```
+
+Start with the `gpu` profile:
+
+```bash
+docker compose --profile gpu up -d
+bash scripts/verify.sh
+```
+
+### Partial GPU offloading
+
+If your GPU has limited VRAM, offload only some layers:
+
+```bash
+# Check your VRAM
+nvidia-smi
+
+# Set layers based on what fits (each layer ~100-400 MB depending on model)
+LLM_GPU_LAYERS=20      # offload 20 layers, keep the rest on CPU
+EMBED_GPU_LAYERS=99    # embedding models are small, usually fit entirely
+RERANK_GPU_LAYERS=99   # reranker models are small too
+```
 
 ### Pointing an application at these servers
 
@@ -125,9 +243,35 @@ the application server(s) that are supposed to call them.
 
 | File | Purpose |
 |---|---|
-| `Dockerfile` | The image: llama.cpp built from source, CPU-only, no baked-in model |
-| `docker-compose.yml` | The three services — llm / embed / reranker — all from that one image |
-| `.env.example` | Every configurable value, with defaults and why |
-| `build-and-push.sh` | Build locally; push to Docker Hub only with `PUSH=1` and an explicit confirm |
+| `Dockerfile` | The image: llama.cpp built from source, CPU-only, with NUMA support |
+| `Dockerfile.cuda` | GPU variant: same as above but with CUDA for NVIDIA GPU offloading |
+| `docker-compose.yml` | CPU services + GPU services (behind `gpu` profile), all from one image |
+| `.env.example` | Every configurable value, with defaults, NUMA, GPU, and examples |
+| `build-and-push.sh` | Build CPU or GPU image (`CUDA=1`); push to Docker Hub only with `PUSH=1` |
+| `scripts/entrypoint.sh` | NUMA-aware entrypoint: runs `numactl --interleave=all` when `NUMA_ENABLED=1` |
+| `scripts/detect-hardware.sh` | Auto-detects CPU, NUMA, GPU, RAM and generates optimal `.env.generated` |
 | `scripts/verify.sh` | Post-deploy smoke test: health + one real request per service |
 | `models/` | Where the client's `.gguf` files go (bind-mounted read-only, nothing committed) |
+
+## Deployment cheat sheet
+
+```bash
+# ── CPU, simple ──
+cp .env.example .env
+# edit .env: set model files + threads
+docker compose up -d
+
+# ── CPU, 40-core NUMA ──
+cp .env.example .env
+# edit .env: set model files, NUMA_ENABLED=1, LLM_CPUSET=0-19, LLM_THREADS=20
+docker compose up -d
+
+# ── GPU ──
+CUDA=1 bash build-and-push.sh
+cp .env.example .env
+# edit .env: LOCAL_LLM_IMAGE=dlabssg/local-llm:cuda12, set model files + GPU_LAYERS
+docker compose --profile gpu up -d
+
+# ── Verify (all profiles) ──
+bash scripts/verify.sh
+```

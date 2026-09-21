@@ -96,7 +96,10 @@ RUN apt-get update \
 COPY --from=build /opt/llama/bin/ /usr/local/bin/
 COPY --from=build /opt/llama/lib/ /usr/local/lib/
 COPY --from=build /opt/llama/llama.cpp.commit /etc/llama.cpp.commit
-RUN ldconfig
+# Entrypoint wrapper: runs numactl --interleave=all when NUMA_ENABLED=1,
+# otherwise plain llama-server. See scripts/entrypoint.sh.
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh && ldconfig
 
 USER llama
 EXPOSE 8080
@@ -109,4 +112,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=5 \
 # Model path, role flags (--embeddings/--reranking/--pooling), threads, context
 # etc. are ALL supplied by docker-compose as CLI args — see docker-compose.yml.
 # Nothing here decides "this is the LLM" vs "this is the reranker".
-ENTRYPOINT ["llama-server"]
+# The entrypoint wrapper handles optional NUMA via the NUMA_ENABLED env var.
+ENTRYPOINT ["entrypoint.sh"]
