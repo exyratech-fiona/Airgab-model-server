@@ -1,0 +1,141 @@
+# Three model servers — LLM, embeddings, reranker — from ONE image
+# (dlabssg/local-llm:latest), differentiated purely by the `command:` flags
+# below. This is deliberately the same shape as OpsGPT's own compose file: one
+# llama.cpp image, run three times with different model files and pooling
+# modes. See README.md for what to hand the client and how they configure it.
+#
+# AIR-GAP: nothing here ever pulls a model over the network. Each service reads
+# a GGUF file the client places under ./models (bind-mounted read-only) and
+# never uses llama.cpp's --hf-repo download path. `docker compose pull` needs
+# the registry once (or `docker load` from a tar, see README); after that,
+# `docker compose up` needs nothing.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ── LLM (chat / completion) ────────────────────────────────────────────────
+  llm:
+    image: ${LOCAL_LLM_IMAGE:-dlabssg/local-llm:latest}
+    container_name: local-llm-llm
+    restart: unless-stopped
+    mem_limit: ${LLM_MEM_LIMIT:-16g}
+    logging: *default-logging
+    volumes:
+      - ./models:/models:ro
+    command:
+      - "--model"
+      - "/models/${LLM_MODEL_FILE:?set LLM_MODEL_FILE in .env to the GGUF filename under ./models}"
+      - "--alias"
+      - "${LLM_MODEL_NAME:-llm}"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--ctx-size"
+      - "${LLM_CTX:-8192}"
+      - "--threads"
+      - "${LLM_THREADS:-8}"
+      # 1 = the full context goes to a single request rather than being split
+      # into N parallel slots. Right for a single client app calling this
+      # server; raise --parallel and lower ctx-size per slot for concurrent
+      # multi-user traffic instead.
+      - "--parallel"
+      - "${LLM_PARALLEL:-1}"
+      - "--cont-batching"
+      - "--cache-ram"
+      - "0"
+      # Renders the model's own chat template (system/user/assistant roles,
+      # tool-call format) instead of a generic fallback. Needed for the
+      # OpenAI-compatible /v1/chat/completions endpoint to behave correctly —
+      # leave this on unless the client has a specific reason not to.
+      - "--jinja"
+      - "--metrics"
+    ports:
+      - "${LLM_PORT:-8094}:8080"
+    networks: [modelnet]
+
+  # ── Embeddings ──────────────────────────────────────────────────────────────
+  embed:
+    image: ${LOCAL_LLM_IMAGE:-dlabssg/local-llm:latest}
+    container_name: local-llm-embed
+    restart: unless-stopped
+    mem_limit: ${EMBED_MEM_LIMIT:-3g}
+    logging: *default-logging
+    volumes:
+      - ./models:/models:ro
+    command:
+      - "--model"
+      - "/models/${EMBED_MODEL_FILE:?set EMBED_MODEL_FILE in .env to the GGUF filename under ./models}"
+      - "--alias"
+      - "${EMBED_MODEL_NAME:-embed}"
+      - "--embeddings"
+      # Pooling mode is MODEL-SPECIFIC, not a free choice: BGE-M3 and
+      # nomic-embed use "mean", BGE-large-en-v1.5 uses "cls". Get this wrong and
+      # the server still answers — it just returns poor-quality vectors, which
+      # is a silent failure. See README.md "Choosing --pooling".
+      - "--pooling"
+      - "${EMBED_POOLING:-mean}"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--ctx-size"
+      - "${EMBED_CTX:-4096}"
+      # Physical batch must be >= the largest chunk's token count, or embedding
+      # a long chunk fails with "input too large to process". Keep this >= ctx.
+      - "--batch-size"
+      - "${EMBED_CTX:-4096}"
+      - "--ubatch-size"
+      - "${EMBED_CTX:-4096}"
+      - "--threads"
+      - "${EMBED_THREADS:-4}"
+      - "--metrics"
+    ports:
+      - "${EMBED_PORT:-8090}:8080"
+    networks: [modelnet]
+
+  # ── Reranker (cross-encoder) ────────────────────────────────────────────────
+  reranker:
+    image: ${LOCAL_LLM_IMAGE:-dlabssg/local-llm:latest}
+    container_name: local-llm-reranker
+    restart: unless-stopped
+    mem_limit: ${RERANK_MEM_LIMIT:-3g}
+    logging: *default-logging
+    volumes:
+      - ./models:/models:ro
+    command:
+      - "--model"
+      - "/models/${RERANK_MODEL_FILE:?set RERANK_MODEL_FILE in .env to the GGUF filename under ./models}"
+      - "--alias"
+      - "${RERANK_MODEL_NAME:-reranker}"
+      - "--reranking"
+      # Reranking always uses "rank" pooling — unlike --pooling above, this one
+      # is not a per-model choice.
+      - "--pooling"
+      - "rank"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--ctx-size"
+      - "${RERANK_CTX:-4096}"
+      # Physical batch must be >= the largest (query + passage) token count
+      # combined, or a long pair fails with "input too large to process".
+      - "--batch-size"
+      - "${RERANK_CTX:-4096}"
+      - "--ubatch-size"
+      - "${RERANK_CTX:-4096}"
+      - "--threads"
+      - "${RERANK_THREADS:-4}"
+      - "--metrics"
+    ports:
+      - "${RERANK_PORT:-8092}:8080"
+    networks: [modelnet]
+
+networks:
+  modelnet:
+    driver: bridge

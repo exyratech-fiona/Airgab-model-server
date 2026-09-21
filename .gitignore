@@ -1,0 +1,4 @@
+.env
+models/*
+!models/README.md
+*.tar
