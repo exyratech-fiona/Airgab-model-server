@@ -361,6 +361,7 @@ LLM_CTX=8192
 LLM_THREADS=${REC_LLM_THREADS}
 LLM_PARALLEL=1
 LLM_MEM_LIMIT=${LLM_MEM}
+LLM_THINKING=0
 
 # ---- Embeddings ----
 # ⚠ REQUIRED: set this to your .gguf filename under ./models/

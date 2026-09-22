@@ -282,6 +282,15 @@ if [ "$HAS_GPU" -eq 1 ] && [ "$IS_GPU_IMAGE" -eq 1 ]; then
   USE_GPU=1
 fi
 
+# Detect if model is a dedicated reasoning model (e.g. DeepSeek-R1, QwQ)
+REC_THINKING=0
+if echo "${LLM_FILE}" | grep -qiE '(deepseek.?r1|qwq|reasoning)'; then
+  REC_THINKING=1
+  ok "Detected Reasoning model: enabling LLM_THINKING=1"
+else
+  ok "Detected Chat model: standard responses (LLM_THINKING=0)"
+fi
+
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 4: GENERATE .env
 # ══════════════════════════════════════════════════════════════════════════════
@@ -306,6 +315,7 @@ LLM_CTX=8192
 LLM_THREADS=${REC_LLM_THREADS}
 LLM_PARALLEL=1
 LLM_MEM_LIMIT=${LLM_MEM}
+LLM_THINKING=${REC_THINKING}
 
 # ---- Embeddings ----
 EMBED_MODEL_FILE=${EMBED_FILE}

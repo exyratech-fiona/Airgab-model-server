@@ -41,6 +41,21 @@ services:
       - SYS_NICE
     environment:
       - NUMA_ENABLED=${NUMA_ENABLED:-0}
+      - LLM_THINKING=${LLM_THINKING:-0}
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        EXTRA=""
+        if [ "$${LLM_THINKING:-0}" = "1" ]; then
+          EXTRA="--jinja"
+        fi
+        if [ "$${NUMA_ENABLED:-0}" = "1" ]; then
+          exec numactl --interleave=all llama-server $$EXTRA "$$@"
+        else
+          exec llama-server $$EXTRA "$$@"
+        fi
+      - "--"
     volumes:
       - ./models:/models:ro
     command:
@@ -191,6 +206,21 @@ services:
       - SYS_NICE
     environment:
       - NUMA_ENABLED=${NUMA_ENABLED:-0}
+      - LLM_THINKING=${LLM_THINKING:-0}
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        EXTRA=""
+        if [ "$${LLM_THINKING:-0}" = "1" ]; then
+          EXTRA="--jinja"
+        fi
+        if [ "$${NUMA_ENABLED:-0}" = "1" ]; then
+          exec numactl --interleave=all llama-server $$EXTRA "$$@"
+        else
+          exec llama-server $$EXTRA "$$@"
+        fi
+      - "--"
     volumes:
       - ./models:/models:ro
     deploy:
