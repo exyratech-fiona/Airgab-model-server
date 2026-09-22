@@ -330,6 +330,21 @@ if [ "$HAS_GPU" -eq 1 ]; then
   info "GPU layers"   "99 (offload all)"
 fi
 
+# Thinking / Reasoning mode selection
+REC_THINKING=0
+if [ -t 0 ]; then
+  echo ""
+  echo -e "  Select Thinking / Reasoning Mode:"
+  echo "    1) OFF — Standard Chat Model (Recommended: direct answers, no <think> box)"
+  echo "    2) ON  — Reasoning Model (DeepSeek-R1, QwQ: enables <think> chain-of-thought)"
+  read -r -p "  Choose [1/2] (Default 1): " user_think_opt
+  case "${user_think_opt:-1}" in
+    1) REC_THINKING=0 ;;
+    2) REC_THINKING=1 ;;
+    *) REC_THINKING=0 ;;
+  esac
+fi
+
 # ══════════════════════════════════════════════════════════════════════════════
 # GENERATE .env FILE
 # ══════════════════════════════════════════════════════════════════════════════
@@ -355,13 +370,13 @@ LOCAL_LLM_IMAGE=${REC_IMAGE}
 # ---- LLM (chat / completion) ----
 # ⚠ REQUIRED: set this to your .gguf filename under ./models/
 LLM_MODEL_FILE=
-LLM_MODEL_NAME=llm
+LLM_MODEL_NAME=opsgpt
 LLM_PORT=8097
 LLM_CTX=8192
 LLM_THREADS=${REC_LLM_THREADS}
 LLM_PARALLEL=1
 LLM_MEM_LIMIT=${LLM_MEM}
-LLM_THINKING=0
+LLM_THINKING=${REC_THINKING}
 
 # ---- Embeddings ----
 # ⚠ REQUIRED: set this to your .gguf filename under ./models/

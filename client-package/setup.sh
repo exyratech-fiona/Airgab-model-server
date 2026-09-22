@@ -282,13 +282,32 @@ if [ "$HAS_GPU" -eq 1 ] && [ "$IS_GPU_IMAGE" -eq 1 ]; then
   USE_GPU=1
 fi
 
-# Detect if model is a dedicated reasoning model (e.g. DeepSeek-R1, QwQ)
-REC_THINKING=0
+# Thinking / Reasoning mode selection
+AUTO_THINK=0
 if echo "${LLM_FILE}" | grep -qiE '(deepseek.?r1|qwq|reasoning)'; then
-  REC_THINKING=1
-  ok "Detected Reasoning model: enabling LLM_THINKING=1"
+  AUTO_THINK=1
+fi
+
+REC_THINKING="$AUTO_THINK"
+
+if [ -t 0 ]; then
+  echo ""
+  echo -e "  ${BOLD}${CYAN}Select Thinking / Reasoning Mode:${NC}"
+  echo "    1) OFF — Standard Chat Model (Recommended: direct answers, no <think> box)"
+  echo "    2) ON  — Reasoning Model (DeepSeek-R1, QwQ: enables <think> chain-of-thought)"
+  [ "$AUTO_THINK" -eq 1 ] && DEF_OPT="2" || DEF_OPT="1"
+  read -r -p "  Choose [1/2] (Default $DEF_OPT): " user_think_opt
+  case "${user_think_opt:-$DEF_OPT}" in
+    1) REC_THINKING=0; ok "Thinking Mode: OFF (standard direct chat)" ;;
+    2) REC_THINKING=1; ok "Thinking Mode: ON (reasoning tags enabled)" ;;
+    *) REC_THINKING="$AUTO_THINK"; ok "Using default ($([ "$AUTO_THINK" -eq 1 ] && echo "ON" || echo "OFF"))" ;;
+  esac
 else
-  ok "Detected Chat model: standard responses (LLM_THINKING=0)"
+  if [ "$REC_THINKING" -eq 1 ]; then
+    ok "Thinking Mode: ON (detected reasoning model)"
+  else
+    ok "Thinking Mode: OFF (standard chat model)"
+  fi
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -309,7 +328,7 @@ LOCAL_LLM_IMAGE=${LOADED_IMAGE}
 
 # ---- LLM ----
 LLM_MODEL_FILE=${LLM_FILE}
-LLM_MODEL_NAME=llm
+LLM_MODEL_NAME=opsgpt
 LLM_PORT=8097
 LLM_CTX=8192
 LLM_THREADS=${REC_LLM_THREADS}
