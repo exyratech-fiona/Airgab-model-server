@@ -112,10 +112,8 @@ if [ "$NUMA_NODES" -gt 1 ]; then
     node_cpus=$(lscpu 2>/dev/null | awk -F: "/^NUMA node${node} CPU/ {gsub(/^[ \t]+/,\"\",\$2); print \$2}" || echo "unknown")
     info "  Node $node CPUs" "$node_cpus"
 
-    # Use first node for LLM cpuset
-    if [ "$node" -eq 0 ] && [ "$node_cpus" != "unknown" ]; then
-      NUMA_CPUSET_LLM="$node_cpus"
-    fi
+    # Use physical cores across both nodes (skipping hyperthreads)
+    NUMA_CPUSET_LLM="0-$((TOTAL_PHYSICAL - 1))"
   done
 
   # Physical cores per node (for thread count)
@@ -286,11 +284,12 @@ header "Recommended Configuration"
 
 # Thread counts
 if [ "$NUMA_ENABLED_REC" -eq 1 ]; then
-  # Multi-socket: LLM gets one full node, embed/rerank get half a node
-  REC_LLM_THREADS=$CORES_PER_NODE
-  REC_EMBED_THREADS=$(( CORES_PER_NODE / 2 ))
-  REC_RERANK_THREADS=$(( CORES_PER_NODE / 2 ))
-  # Ensure minimums
+  # Multi-socket: LLM uses all physical cores across both sockets (interleaved)
+  REC_LLM_THREADS=$TOTAL_PHYSICAL
+  REC_EMBED_THREADS=8
+  REC_RERANK_THREADS=8
+  [ "$REC_EMBED_THREADS" -gt "$TOTAL_PHYSICAL" ] && REC_EMBED_THREADS=$((TOTAL_PHYSICAL / 2))
+  [ "$REC_RERANK_THREADS" -gt "$TOTAL_PHYSICAL" ] && REC_RERANK_THREADS=$((TOTAL_PHYSICAL / 2))
   [ "$REC_EMBED_THREADS" -lt 2 ] && REC_EMBED_THREADS=2
   [ "$REC_RERANK_THREADS" -lt 2 ] && REC_RERANK_THREADS=2
 else

@@ -232,8 +232,9 @@ NUMA_CPUSET=""
 
 if [ "$NUMA_NODES" -gt 1 ]; then
   NUMA_ENABLED_REC=1
-  NUMA_CPUSET=$(lscpu 2>/dev/null | awk -F: '/^NUMA node0 CPU/ {gsub(/^[ \t]+/,"",$2); print $2}' || echo "")
-  ok "NUMA: $NUMA_NODES nodes (will enable interleaving)"
+  # Pin across physical cores on both sockets (0 to TOTAL_PHYSICAL-1), skipping hyperthreads
+  NUMA_CPUSET="0-$((TOTAL_PHYSICAL - 1))"
+  ok "NUMA: $NUMA_NODES nodes (interleaving across physical cores: $NUMA_CPUSET)"
   CORES_PER_NODE=${PHYSICAL_CORES:-$((TOTAL_CORES / NUMA_NODES))}
 else
   ok "NUMA: single socket (no optimization needed)"
@@ -257,16 +258,12 @@ else
   ok "GPU: none detected (CPU-only mode)"
 fi
 
-# Calculate thread counts
-if [ "$NUMA_ENABLED_REC" -eq 1 ]; then
-  REC_LLM_THREADS=$CORES_PER_NODE
-  REC_EMBED_THREADS=$(( CORES_PER_NODE / 2 ))
-  REC_RERANK_THREADS=$(( CORES_PER_NODE / 2 ))
-else
-  REC_LLM_THREADS=$TOTAL_PHYSICAL
-  REC_EMBED_THREADS=$(( TOTAL_PHYSICAL / 2 ))
-  REC_RERANK_THREADS=$(( TOTAL_PHYSICAL / 2 ))
-fi
+# Calculate thread counts — use all physical cores for LLM on multi-socket
+REC_LLM_THREADS=$TOTAL_PHYSICAL
+REC_EMBED_THREADS=8
+REC_RERANK_THREADS=8
+[ "$REC_EMBED_THREADS" -gt "$TOTAL_PHYSICAL" ] && REC_EMBED_THREADS=$((TOTAL_PHYSICAL / 2))
+[ "$REC_RERANK_THREADS" -gt "$TOTAL_PHYSICAL" ] && REC_RERANK_THREADS=$((TOTAL_PHYSICAL / 2))
 [ "$REC_EMBED_THREADS" -lt 2 ] && REC_EMBED_THREADS=2
 [ "$REC_RERANK_THREADS" -lt 2 ] && REC_RERANK_THREADS=2
 
