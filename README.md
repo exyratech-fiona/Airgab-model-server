@@ -13,6 +13,103 @@ It is llama.cpp underneath, wrapped in an OpenAI-compatible HTTP API
 already speaks that API (OpsGPT included) can point at these three ports and
 work unmodified.
 
+---
+
+## 📦 Developer Guide: Build, Push to Docker Hub & Package Client Zip
+
+### Option 1: Automated Script (Fastest)
+
+We provide [`build-and-push.sh`](file:///c:/Users/DOL-70/Documents/Airgab-model-server/build-and-push.sh) to handle building Dockerfiles, saving `.tar` images directly into `client-package/`, pushing to Docker Hub, and optionally compressing `client-package.zip`:
+
+```bash
+# Interactive menu (prompts for CPU / GPU / Both, push, and zip)
+bash build-and-push.sh
+
+# Build CPU image, push to Docker Hub, and create client-package.zip
+BUILD=cpu PUSH=1 ZIP=1 bash build-and-push.sh
+
+# Build GPU (CUDA) image, push to Docker Hub, and create client-package.zip
+BUILD=gpu PUSH=1 ZIP=1 bash build-and-push.sh
+
+# Build BOTH images, push to Docker Hub, and create client-package.zip
+BUILD=all PUSH=1 ZIP=1 bash build-and-push.sh
+```
+
+---
+
+### Option 2: Manual Step-by-Step Commands
+
+#### 1. Build the Docker Images from Dockerfile
+```bash
+# Build CPU Image (~200MB)
+docker build -f Dockerfile -t dlabssg/local-llm:latest .
+
+# Build GPU Image with CUDA 12 (~5GB)
+docker build -f Dockerfile.cuda -t dlabssg/local-llm:cuda12 .
+```
+
+#### 2. Push Docker Images to Docker Hub
+```bash
+# 1. Log in to Docker Hub
+docker login
+
+# 2. Push CPU image
+docker push dlabssg/local-llm:latest
+
+# 3. Push GPU (CUDA) image
+docker push dlabssg/local-llm:cuda12
+```
+
+#### 3. Save Docker Images to `.tar` in `client-package/`
+```bash
+mkdir -p client-package
+
+# Export CPU image tar for offline transfer
+docker save dlabssg/local-llm:latest -o client-package/local-llm-latest.tar
+
+# Export GPU image tar for offline transfer
+docker save dlabssg/local-llm:cuda12 -o client-package/local-llm-cuda12.tar
+```
+
+#### 4. Zip `client-package` with Docker Images
+Ensure your `.gguf` model files are inside `client-package/models/` (or provide them separately):
+```text
+client-package/
+├── local-llm-latest.tar          # CPU image (or local-llm-cuda12.tar for GPU)
+├── models/                       # Place GGUF files here
+│   ├── Qwen_Qwen3-8B-Q4_K_M.gguf
+│   ├── bge-m3-Q8_0.gguf
+│   └── bge-reranker-v2-m3-Q8_0.gguf
+├── scripts/
+│   └── entrypoint.sh
+├── docker-compose.yml
+├── setup.sh                      # One-click installer
+├── test.sh                       # Smoke test script
+├── .env.example
+└── README.md
+```
+
+Compress the directory into a `.zip` or `.tar.gz`:
+```bash
+# Create zip file:
+zip -r client-package.zip client-package/
+
+# Or create compressed tarball:
+tar -czvf client-package.tar.gz client-package/
+```
+
+#### 5. How the Client Runs It on the Air-Gapped Machine
+Copy `client-package.zip` over USB or offline media to the target server:
+```bash
+unzip client-package.zip
+cd client-package
+
+# Run automated one-click setup
+bash setup.sh
+```
+
+---
+
 ## The air-gap contract
 
 **Building this image needs internet** (it clones llama.cpp and installs

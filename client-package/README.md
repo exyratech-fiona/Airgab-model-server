@@ -7,12 +7,25 @@ A standalone, completely offline OpenAI-compatible Model Server running:
 
 ---
 
+## 📦 Package Contents
+
+When unzipped (`unzip client-package.zip`), this folder contains:
+- `local-llm-latest.tar` (or `local-llm-cuda12.tar` for GPU) — Pre-built offline Docker image
+- `models/` — Directory for your 3 `.gguf` model files
+- `setup.sh` — 1-click automated installation & benchmark script
+- `test.sh` — Verification script for health and token speeds
+- `docker-compose.yml` — Service orchestration with NUMA & GPU support
+- `.env.example` — Configuration template with hardware tuning options
+
+---
+
 ## 🚀 One-Click Setup (Fully Automated)
 
 Everything is automated — image loading, hardware detection (CPU cores, NUMA, GPU), `.env` configuration, service startup, and verification.
 
 ```bash
-# 1. Enter this directory
+# 1. Unzip and enter this directory
+unzip client-package.zip
 cd client-package
 
 # 2. Make sure your 3 .gguf files are inside ./models/

@@ -15,6 +15,7 @@
 # ║  Flags:                                                                     ║
 # ║    PUSH=1       Push built image(s) to Docker Hub                           ║
 # ║    SAVE_TAR=1   Save .tar archive to client-package/ (default: 1)           ║
+# ║    ZIP=1        Compress client-package into client-package.zip             ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
 set -euo pipefail
@@ -25,6 +26,7 @@ IMAGE="${NAMESPACE}/local-llm"
 BUILD_ARGS="${BUILD_ARGS:-}"
 SAVE_TAR="${SAVE_TAR:-1}"
 PUSH="${PUSH:-0}"
+ZIP="${ZIP:-0}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -94,15 +96,40 @@ if [ "$TARGET" = "gpu" ] || [ "$TARGET" = "all" ]; then
   build_image "GPU (CUDA)" "Dockerfile.cuda" "cuda12" "local-llm-cuda12.tar"
 fi
 
+# ── Optional Zipping ──────────────────────────────────────────────────────────
+if [ "$ZIP" = "0" ] && [ -t 0 ]; then
+  echo ""
+  read -r -p "Do you want to compress client-package into a zip/tarball now? [y/N]: " do_zip
+  if [[ "$do_zip" =~ ^[Yy]$ ]]; then
+    ZIP=1
+  fi
+fi
+
+if [ "$ZIP" = "1" ]; then
+  echo ""
+  echo -e "${BOLD}${CYAN}Compressing client-package for client delivery...${NC}"
+  if command -v zip &>/dev/null; then
+    rm -f client-package.zip
+    zip -r client-package.zip client-package/
+    echo -e "  ${GREEN}✔ Created client-package.zip${NC} ($(du -h client-package.zip | awk '{print $1}'))"
+  else
+    rm -f client-package.tar.gz
+    tar -czvf client-package.tar.gz client-package/
+    echo -e "  ${GREEN}✔ Created client-package.tar.gz${NC} ($(du -h client-package.tar.gz | awk '{print $1}'))"
+  fi
+fi
+
 echo -e "\n${BOLD}${GREEN}════════════════════════════════════════════════════${NC}"
 echo -e "${BOLD}${GREEN}  Build and Package Complete!${NC}"
 echo -e "${BOLD}${GREEN}════════════════════════════════════════════════════${NC}"
 echo ""
 echo "Files ready in client-package/:"
 ls -lh client-package/*.tar 2>/dev/null || true
+[ -f "client-package.zip" ] && ls -lh client-package.zip
+[ -f "client-package.tar.gz" ] && ls -lh client-package.tar.gz
 echo ""
 echo -e "${BOLD}How to send to client:${NC}"
-echo "  • If client has CPU ONLY -> send client-package/ with local-llm-latest.tar"
-echo "  • If client has NVIDIA GPU -> send client-package/ with local-llm-cuda12.tar"
-echo "  • Remember to place model .gguf files inside client-package/models/"
+echo "  • Copy client-package.zip (or client-package/) to USB / air-gapped machine"
+echo "  • The client unzips and runs: bash setup.sh"
+echo "  • Place model .gguf files inside client-package/models/"
 echo ""
