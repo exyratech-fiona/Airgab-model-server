@@ -69,11 +69,6 @@ services:
       # Safe to pass even on single-socket boxes (llama.cpp auto-detects).
       - "--numa"
       - "${NUMA_MODE:-distribute}"
-      # Renders the model's own chat template (system/user/assistant roles,
-      # tool-call format) instead of a generic fallback. Needed for the
-      # OpenAI-compatible /v1/chat/completions endpoint to behave correctly —
-      # leave this on unless the client has a specific reason not to.
-      - "--jinja"
       - "--metrics"
     # Pin to specific CPU cores for NUMA-local memory access. Empty = no
     # pinning (default). Example: "0-19" for one 20-core NUMA node.
@@ -227,7 +222,6 @@ services:
       - "0"
       - "--numa"
       - "${NUMA_MODE:-distribute}"
-      - "--jinja"
       - "--metrics"
     cpuset: ${LLM_CPUSET:-}
     ports:
