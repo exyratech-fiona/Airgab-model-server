@@ -51,10 +51,10 @@ RESPONSE=$(curl -fsS --max-time 120 \
   -H 'Content-Type: application/json' \
   -d '{
     "messages": [
-      {"role": "system", "content": "You are a helpful assistant. Reply briefly."},
+      {"role": "system", "content": "You are a helpful assistant. Reply concisely in one short sentence without thinking."},
       {"role": "user", "content": "Say hi in one sentence."}
     ],
-    "max_tokens": 50,
+    "max_tokens": 80,
     "temperature": 0.7
   }' 2>/dev/null || echo "CONNECTION_FAILED")
 END_TS=$(date +%s%3N 2>/dev/null || date +%s)
@@ -64,35 +64,36 @@ DIFF_MS=$((END_TS - START_TS))
 DIFF_SEC=$(awk "BEGIN {printf \"%.2f\", $DIFF_MS / 1000}" 2>/dev/null || echo "1.0")
 
 if echo "$RESPONSE" | grep -q '"choices"'; then
-  PARSED_DATA=$(echo "$RESPONSE" | python3 -c "
-import sys, json
+  REPLY="OK"
+  TOKENS="?"
+  SPEED="N/A"
+  eval "$(echo "$RESPONSE" | python3 -c "
+import sys, json, shlex
 try:
     r = json.load(sys.stdin)
-    msg = r['choices'][0]['message']['content'].strip()
+    content = r['choices'][0]['message'].get('content', '') or ''
+    if '</think>' in content:
+        content = content.split('</think>')[-1]
+    content = content.replace('<think>', '').replace('\r', ' ').replace('\n', ' ').strip()
+    if len(content) > 120:
+        content = content[:117] + '...'
     usage = r.get('usage', {})
     comp_tok = usage.get('completion_tokens', 0)
     timings = r.get('timings', {})
     speed = timings.get('predicted_per_second')
-    if speed is not None:
-        speed_str = f'{speed:.2f}'
-    elif comp_tok > 0:
-        speed_str = f'{(comp_tok / ($DIFF_MS / 1000)):.2f}'
+    diff_ms = $DIFF_MS
+    if speed is not None and float(speed) > 0:
+        speed_str = f'{float(speed):.2f}'
+    elif comp_tok > 0 and diff_ms > 0:
+        speed_str = f'{(comp_tok / (diff_ms / 1000.0)):.2f}'
     else:
         speed_str = 'N/A'
-    print(f'{msg}|||{comp_tok}|||{speed_str}')
+    print(f'REPLY={shlex.quote(content)}')
+    print(f'TOKENS={shlex.quote(str(comp_tok))}')
+    print(f'SPEED={shlex.quote(str(speed_str))}')
 except Exception:
     pass
-" 2>/dev/null || true)
-
-  if [ -n "$PARSED_DATA" ]; then
-    REPLY=$(echo "$PARSED_DATA" | awk -F '|||' '{print $1}')
-    TOKENS=$(echo "$PARSED_DATA" | awk -F '|||' '{print $2}')
-    SPEED=$(echo "$PARSED_DATA" | awk -F '|||' '{print $3}')
-  else
-    REPLY=$(echo "$RESPONSE" | grep -o '"content":"[^"]*"' | tail -1 | sed 's/"content":"//;s/"$//')
-    TOKENS="?"
-    SPEED="N/A"
-  fi
+" 2>/dev/null || true)"
 
   echo -e "  ${GREEN}✔ Response:${NC} \"$REPLY\""
   echo -e "  ${BOLD}⚡ Generation Speed:${NC} ${CYAN}${SPEED} tokens/sec${NC} (${TOKENS} tokens in ${DIFF_SEC}s)"
