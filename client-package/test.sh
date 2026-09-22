@@ -45,6 +45,7 @@ echo -e "\n${BOLD}${CYAN}═══ Test 1: Chat Completion (LLM) ═══${NC}\
 echo "  Sending: \"Say hi in one sentence.\""
 echo ""
 
+START_TS=$(date +%s%3N 2>/dev/null || date +%s)
 RESPONSE=$(curl -fsS --max-time 120 \
   "http://$HOST:$LLM_PORT/v1/chat/completions" \
   -H 'Content-Type: application/json' \
@@ -56,11 +57,45 @@ RESPONSE=$(curl -fsS --max-time 120 \
     "max_tokens": 50,
     "temperature": 0.7
   }' 2>/dev/null || echo "CONNECTION_FAILED")
+END_TS=$(date +%s%3N 2>/dev/null || date +%s)
+
+DIFF_MS=$((END_TS - START_TS))
+[ "$DIFF_MS" -le 0 ] && DIFF_MS=1000
+DIFF_SEC=$(awk "BEGIN {printf \"%.2f\", $DIFF_MS / 1000}" 2>/dev/null || echo "1.0")
 
 if echo "$RESPONSE" | grep -q '"choices"'; then
-  REPLY=$(echo "$RESPONSE" | python3 -c "import sys,json; r=json.load(sys.stdin); print(r['choices'][0]['message']['content'])" 2>/dev/null \
-    || echo "$RESPONSE" | grep -o '"content":"[^"]*"' | tail -1 | sed 's/"content":"//;s/"$//')
-  echo -e "  ${GREEN}✔ Response:${NC} $REPLY"
+  PARSED_DATA=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    r = json.load(sys.stdin)
+    msg = r['choices'][0]['message']['content'].strip()
+    usage = r.get('usage', {})
+    comp_tok = usage.get('completion_tokens', 0)
+    timings = r.get('timings', {})
+    speed = timings.get('predicted_per_second')
+    if speed is not None:
+        speed_str = f'{speed:.2f}'
+    elif comp_tok > 0:
+        speed_str = f'{(comp_tok / ($DIFF_MS / 1000)):.2f}'
+    else:
+        speed_str = 'N/A'
+    print(f'{msg}|||{comp_tok}|||{speed_str}')
+except Exception:
+    pass
+" 2>/dev/null || true)
+
+  if [ -n "$PARSED_DATA" ]; then
+    REPLY=$(echo "$PARSED_DATA" | awk -F '|||' '{print $1}')
+    TOKENS=$(echo "$PARSED_DATA" | awk -F '|||' '{print $2}')
+    SPEED=$(echo "$PARSED_DATA" | awk -F '|||' '{print $3}')
+  else
+    REPLY=$(echo "$RESPONSE" | grep -o '"content":"[^"]*"' | tail -1 | sed 's/"content":"//;s/"$//')
+    TOKENS="?"
+    SPEED="N/A"
+  fi
+
+  echo -e "  ${GREEN}✔ Response:${NC} \"$REPLY\""
+  echo -e "  ${BOLD}⚡ Generation Speed:${NC} ${CYAN}${SPEED} tokens/sec${NC} (${TOKENS} tokens in ${DIFF_SEC}s)"
   PASS=$((PASS + 1))
 else
   echo -e "  ${RED}✘ Failed${NC}: $RESPONSE"

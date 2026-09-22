@@ -449,15 +449,51 @@ TOTAL=3
 
 # Test LLM
 echo ""
-info "Testing LLM (chat completion)..."
+info "Testing LLM speed & response (chat completion)..."
+START_TS=$(date +%s%3N 2>/dev/null || date +%s)
 LLM_RESPONSE=$(curl -fsS --max-time 120 "http://localhost:$LLM_PORT/v1/chat/completions" \
   -H 'Content-Type: application/json' \
-  -d '{"messages":[{"role":"user","content":"Say hello in one sentence."}],"max_tokens":50}' \
+  -d '{"messages":[{"role":"user","content":"Say hello in one short sentence."}],"max_tokens":50}' \
   2>/dev/null || echo "FAIL")
+END_TS=$(date +%s%3N 2>/dev/null || date +%s)
+
+DIFF_MS=$((END_TS - START_TS))
+[ "$DIFF_MS" -le 0 ] && DIFF_MS=1000
+DIFF_SEC=$(awk "BEGIN {printf \"%.2f\", $DIFF_MS / 1000}" 2>/dev/null || echo "1.0")
 
 if echo "$LLM_RESPONSE" | grep -q '"choices"'; then
-  REPLY=$(echo "$LLM_RESPONSE" | grep -o '"content":"[^"]*"' | head -1 | sed 's/"content":"//;s/"$//')
+  PARSED_DATA=$(echo "$LLM_RESPONSE" | python3 -c "
+import sys, json
+try:
+    r = json.load(sys.stdin)
+    msg = r['choices'][0]['message']['content'].strip()
+    usage = r.get('usage', {})
+    comp_tok = usage.get('completion_tokens', 0)
+    timings = r.get('timings', {})
+    speed = timings.get('predicted_per_second')
+    if speed is not None:
+        speed_str = f'{speed:.2f}'
+    elif comp_tok > 0:
+        speed_str = f'{(comp_tok / ($DIFF_MS / 1000)):.2f}'
+    else:
+        speed_str = 'N/A'
+    print(f'{msg}|||{comp_tok}|||{speed_str}')
+except Exception:
+    pass
+" 2>/dev/null || true)
+
+  if [ -n "$PARSED_DATA" ]; then
+    REPLY=$(echo "$PARSED_DATA" | awk -F '|||' '{print $1}')
+    TOKENS=$(echo "$PARSED_DATA" | awk -F '|||' '{print $2}')
+    SPEED=$(echo "$PARSED_DATA" | awk -F '|||' '{print $3}')
+  else
+    REPLY=$(echo "$LLM_RESPONSE" | grep -o '"content":"[^"]*"' | head -1 | sed 's/"content":"//;s/"$//')
+    TOKENS="?"
+    SPEED="N/A"
+  fi
+
   ok "LLM responded: \"$REPLY\""
+  echo -e "    ${BOLD}Speed:${NC}  ${CYAN}${SPEED} tokens/sec${NC} (${TOKENS} tokens generated in ${DIFF_SEC}s)"
   PASS=$((PASS + 1))
 else
   fail "LLM test failed"
