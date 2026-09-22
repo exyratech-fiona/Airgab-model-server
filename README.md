@@ -218,14 +218,14 @@ RERANK_GPU_LAYERS=99   # reranker models are small too
 
 ### Pointing an application at these servers
 
-The three ports (defaults: LLM `8094`, embed `8090`, reranker `8092`) speak the
+The three ports (defaults: LLM `8097`, embed `8098`, reranker `8099`) speak the
 same OpenAI-compatible protocol OpsGPT's own model servers do. If the client is
 also running (a copy of) OpsGPT, its `.env` config maps directly:
 
 ```
-OPSGPT_LLAMACPP_BASE_URL=http://<this-host>:8094
-OPSGPT_EMBED_BASE_URL=http://<this-host>:8090     (or OPSGPT_EMBED_BGE_BASE_URL — match the model you loaded)
-OPSGPT_RERANKER_BASE_URL=http://<this-host>:8092
+OPSGPT_LLAMACPP_BASE_URL=http://<this-host>:8097
+OPSGPT_EMBED_BASE_URL=http://<this-host>:8098     (or OPSGPT_EMBED_BGE_BASE_URL — match the model you loaded)
+OPSGPT_RERANKER_BASE_URL=http://<this-host>:8099
 ```
 
 For anything else: standard OpenAI client libraries work by pointing

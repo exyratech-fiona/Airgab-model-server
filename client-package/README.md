@@ -1,9 +1,9 @@
 # Air-Gapped Local LLM Server — Client Deployment Package
 
 A standalone, completely offline OpenAI-compatible Model Server running:
-- **LLM Chat Completion**: `/v1/chat/completions` (Default port: `8094`)
-- **Embeddings**: `/v1/embeddings` (Default port: `8090`)
-- **Reranker**: `/v1/rerank` (Default port: `8092`)
+- **LLM Chat Completion**: `/v1/chat/completions` (Default port: `8097`)
+- **Embeddings**: `/v1/embeddings` (Default port: `8098`)
+- **Reranker**: `/v1/rerank` (Default port: `8099`)
 
 ---
 
@@ -43,7 +43,7 @@ bash test.sh
 
 #### 1. Chat Completion (Hi Test)
 ```bash
-curl http://localhost:8094/v1/chat/completions \
+curl http://localhost:8097/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "Hi"}],
@@ -53,14 +53,14 @@ curl http://localhost:8094/v1/chat/completions \
 
 #### 2. Embeddings
 ```bash
-curl http://localhost:8090/v1/embeddings \
+curl http://localhost:8098/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{"input": "Hello world"}'
 ```
 
 #### 3. Reranker
 ```bash
-curl http://localhost:8092/v1/rerank \
+curl http://localhost:8099/v1/rerank \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is AI?",

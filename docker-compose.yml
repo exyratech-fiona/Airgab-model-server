@@ -79,7 +79,7 @@ services:
     # pinning (default). Example: "0-19" for one 20-core NUMA node.
     cpuset: ${LLM_CPUSET:-}
     ports:
-      - "${LLM_PORT:-8094}:8080"
+      - "${LLM_PORT:-8097}:8080"
     networks: [modelnet]
 
   # ── Embeddings ──────────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ services:
       - "--metrics"
     cpuset: ${EMBED_CPUSET:-}
     ports:
-      - "${EMBED_PORT:-8090}:8080"
+      - "${EMBED_PORT:-8098}:8080"
     networks: [modelnet]
 
   # ── Reranker (cross-encoder) ────────────────────────────────────────────────
@@ -173,7 +173,7 @@ services:
       - "--metrics"
     cpuset: ${RERANK_CPUSET:-}
     ports:
-      - "${RERANK_PORT:-8092}:8080"
+      - "${RERANK_PORT:-8099}:8080"
     networks: [modelnet]
 
   # ── GPU variants (only start with: docker compose --profile gpu up -d) ─────
@@ -231,7 +231,7 @@ services:
       - "--metrics"
     cpuset: ${LLM_CPUSET:-}
     ports:
-      - "${LLM_PORT:-8094}:8080"
+      - "${LLM_PORT:-8097}:8080"
     networks: [modelnet]
 
   embed-gpu:
@@ -282,7 +282,7 @@ services:
       - "--metrics"
     cpuset: ${EMBED_CPUSET:-}
     ports:
-      - "${EMBED_PORT:-8090}:8080"
+      - "${EMBED_PORT:-8098}:8080"
     networks: [modelnet]
 
   reranker-gpu:
@@ -333,7 +333,7 @@ services:
       - "--metrics"
     cpuset: ${RERANK_CPUSET:-}
     ports:
-      - "${RERANK_PORT:-8092}:8080"
+      - "${RERANK_PORT:-8099}:8080"
     networks: [modelnet]
 
 networks:
