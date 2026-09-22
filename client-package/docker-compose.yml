@@ -49,6 +49,8 @@ services:
         EXTRA=""
         if [ "$${LLM_THINKING:-0}" = "1" ]; then
           EXTRA="--jinja"
+        else
+          EXTRA="--chat-template chatml --reasoning-format none"
         fi
         if [ "$${NUMA_ENABLED:-0}" = "1" ]; then
           exec numactl --interleave=all llama-server $$EXTRA "$$@"
@@ -214,6 +216,8 @@ services:
         EXTRA=""
         if [ "$${LLM_THINKING:-0}" = "1" ]; then
           EXTRA="--jinja"
+        else
+          EXTRA="--chat-template chatml --reasoning-format none"
         fi
         if [ "$${NUMA_ENABLED:-0}" = "1" ]; then
           exec numactl --interleave=all llama-server $$EXTRA "$$@"
