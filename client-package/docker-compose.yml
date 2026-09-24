@@ -52,9 +52,8 @@ services:
           EXTRA="--jinja"
         else
           export LLAMA_ARG_REASONING="off"
-          export LLAMA_ARG_THINK_BUDGET="0"
           if llama-server --help 2>&1 | grep -q -- '--reasoning'; then
-            EXTRA="--reasoning off --reasoning-budget 0"
+            EXTRA="--reasoning off"
           elif llama-server --help 2>&1 | grep -q -- '--chat-template-kwargs'; then
             EXTRA="--chat-template-kwargs {\"enable_thinking\":false}"
           fi
@@ -226,9 +225,8 @@ services:
           EXTRA="--jinja"
         else
           export LLAMA_ARG_REASONING="off"
-          export LLAMA_ARG_THINK_BUDGET="0"
           if llama-server --help 2>&1 | grep -q -- '--reasoning'; then
-            EXTRA="--reasoning off --reasoning-budget 0"
+            EXTRA="--reasoning off"
           elif llama-server --help 2>&1 | grep -q -- '--chat-template-kwargs'; then
             EXTRA="--chat-template-kwargs {\"enable_thinking\":false}"
           fi

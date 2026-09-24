@@ -18,9 +18,8 @@ if [ "${LLM_THINKING:-0}" = "1" ]; then
   EXTRA_ARGS+=("--jinja")
 else
   export LLAMA_ARG_REASONING="off"
-  export LLAMA_ARG_THINK_BUDGET="0"
   if llama-server --help 2>&1 | grep -q -- '--reasoning'; then
-    EXTRA_ARGS+=("--reasoning" "off" "--reasoning-budget" "0")
+    EXTRA_ARGS+=("--reasoning" "off")
   elif llama-server --help 2>&1 | grep -q -- '--chat-template-kwargs'; then
     EXTRA_ARGS+=("--chat-template-kwargs" '{"enable_thinking":false}')
   fi
