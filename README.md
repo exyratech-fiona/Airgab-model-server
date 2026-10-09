@@ -71,10 +71,10 @@ docker save dlabssg/local-llm:latest -o client-package/local-llm-latest.tar
 docker save dlabssg/local-llm:cuda12 -o client-package/local-llm-cuda12.tar
 ```
 
-#### 4. Zip `client-package` with Docker Images
-Ensure your `.gguf` model files are inside `client-package/models/` (or provide them separately):
+#### 4. Zip `client-package` or `client-package-podman`
+Ensure your `.gguf` model files are inside `models/` (or provide them separately):
 ```text
-client-package/
+client-package/ (or client-package-podman/)
 ├── local-llm-latest.tar          # CPU image (or local-llm-cuda12.tar for GPU)
 ├── models/                       # Place GGUF files here
 │   ├── Qwen_Qwen3-8B-Q4_K_M.gguf
@@ -82,8 +82,8 @@ client-package/
 │   └── bge-reranker-v2-m3-Q8_0.gguf
 ├── scripts/
 │   └── entrypoint.sh
-├── docker-compose.yml
-├── setup.sh                      # One-click installer
+├── docker-compose.yml            # Tuned with :ro,z for SELinux in Podman
+├── setup.sh                      # One-click installer (auto-detects Docker or Podman)
 ├── test.sh                       # Smoke test script
 ├── .env.example
 └── README.md
@@ -91,22 +91,29 @@ client-package/
 
 Compress the directory into a `.zip` or `.tar.gz`:
 ```bash
-# Create zip file:
+# For Docker environments:
 zip -r client-package.zip client-package/
 
-# Or create compressed tarball:
-tar -czvf client-package.tar.gz client-package/
+# For Podman environments (rootless & SELinux supported):
+zip -r client-package-podman.zip client-package-podman/
 ```
 
 #### 5. How the Client Runs It on the Air-Gapped Machine
-Copy `client-package.zip` over USB or offline media to the target server:
-```bash
-unzip client-package.zip
-cd client-package
+Copy `client-package.zip` (for Docker) or `client-package-podman.zip` (for Podman) over USB or offline media to the target server:
 
-# Run automated one-click setup
-bash setup.sh
-```
+* **For Docker:**
+  ```bash
+  unzip client-package.zip
+  cd client-package
+  bash setup.sh
+  ```
+
+* **For Podman:**
+  ```bash
+  unzip client-package-podman.zip
+  cd client-package-podman
+  bash setup.sh
+  ```
 
 ---
 

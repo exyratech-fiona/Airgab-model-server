@@ -78,6 +78,10 @@ build_image() {
     echo -e "  Saving tar package: ${BOLD}client-package/${tar_name}${NC} (please wait)..."
     docker save "${IMAGE}:${tag}" -o "client-package/${tar_name}"
     echo -e "  ${GREEN}✔ Saved client-package/${tar_name}${NC} ($(du -h "client-package/${tar_name}" | awk '{print $1}'))"
+    if [ -d "client-package-podman" ]; then
+      cp -f "client-package/${tar_name}" "client-package-podman/${tar_name}" 2>/dev/null || true
+      echo -e "  ${GREEN}✔ Synchronized to client-package-podman/${tar_name}${NC}"
+    fi
   fi
 
   if [ "$PUSH" = "1" ]; then
@@ -99,7 +103,7 @@ fi
 # ── Optional Zipping ──────────────────────────────────────────────────────────
 if [ "$ZIP" = "0" ] && [ -t 0 ]; then
   echo ""
-  read -r -p "Do you want to compress client-package into a zip/tarball now? [y/N]: " do_zip
+  read -r -p "Do you want to compress client-package(s) into zip/tarball now? [y/N]: " do_zip
   if [[ "$do_zip" =~ ^[Yy]$ ]]; then
     ZIP=1
   fi
@@ -107,15 +111,25 @@ fi
 
 if [ "$ZIP" = "1" ]; then
   echo ""
-  echo -e "${BOLD}${CYAN}Compressing client-package for client delivery...${NC}"
+  echo -e "${BOLD}${CYAN}Compressing client-package for Docker client delivery...${NC}"
   if command -v zip &>/dev/null; then
     rm -f client-package.zip
     zip -r client-package.zip client-package/
     echo -e "  ${GREEN}✔ Created client-package.zip${NC} ($(du -h client-package.zip | awk '{print $1}'))"
+    if [ -d "client-package-podman" ]; then
+      rm -f client-package-podman.zip
+      zip -r client-package-podman.zip client-package-podman/
+      echo -e "  ${GREEN}✔ Created client-package-podman.zip${NC} ($(du -h client-package-podman.zip | awk '{print $1}'))"
+    fi
   else
     rm -f client-package.tar.gz
     tar -czvf client-package.tar.gz client-package/
     echo -e "  ${GREEN}✔ Created client-package.tar.gz${NC} ($(du -h client-package.tar.gz | awk '{print $1}'))"
+    if [ -d "client-package-podman" ]; then
+      rm -f client-package-podman.tar.gz
+      tar -czvf client-package-podman.tar.gz client-package-podman/
+      echo -e "  ${GREEN}✔ Created client-package-podman.tar.gz${NC} ($(du -h client-package-podman.tar.gz | awk '{print $1}'))"
+    fi
   fi
 fi
 
@@ -123,13 +137,15 @@ echo -e "\n${BOLD}${GREEN}══════════════════
 echo -e "${BOLD}${GREEN}  Build and Package Complete!${NC}"
 echo -e "${BOLD}${GREEN}════════════════════════════════════════════════════${NC}"
 echo ""
-echo "Files ready in client-package/:"
+echo "Files ready:"
 ls -lh client-package/*.tar 2>/dev/null || true
 [ -f "client-package.zip" ] && ls -lh client-package.zip
+[ -f "client-package-podman.zip" ] && ls -lh client-package-podman.zip
 [ -f "client-package.tar.gz" ] && ls -lh client-package.tar.gz
+[ -f "client-package-podman.tar.gz" ] && ls -lh client-package-podman.tar.gz
 echo ""
 echo -e "${BOLD}How to send to client:${NC}"
-echo "  • Copy client-package.zip (or client-package/) to USB / air-gapped machine"
-echo "  • The client unzips and runs: bash setup.sh"
-echo "  • Place model .gguf files inside client-package/models/"
+echo "  • Docker clients: Copy client-package.zip -> unzips -> bash setup.sh"
+echo "  • Podman clients: Copy client-package-podman.zip -> unzips -> bash setup.sh"
+echo "  • Place model .gguf files inside ./models/ in the respective directory"
 echo ""
